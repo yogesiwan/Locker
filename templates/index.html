@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #chat-container {
+            display: none;
+        }
+        #login-container {
+            text-align: center;
+            margin-top: 50px;
+        }
+        #message-container {
+            height: 400px;
+            border: 1px solid #ccc;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 5px;
+        }
+        .server-message {
+            color: #666;
+            font-style: italic;
+        }
+        input[type="text"], input[type="number"], button {
+            padding: 8px;
+            margin: 5px;
+        }
+        #message-input {
+            width: 70%;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            width: 100px;
+            text-align: right;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="login-container">
+        <h1>Web Chat Client</h1>
+        <div class="input-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" placeholder="Enter username">
+        </div>
+        <div class="input-group">
+            <label for="server-ip">Server IP:</label>
+            <input type="text" id="server-ip" placeholder="Enter server IP">
+        </div>
+        <div class="input-group">
+            <label for="server-port">Server Port:</label>
+            <input type="number" id="server-port" value="9999">
+        </div>
+        <button id="connect-btn">Connect</button>
+    </div>
+
+    <div id="chat-container">
+        <h1>Chat Room</h1>
+        <div id="message-container"></div>
+        <div>
+            <input type="text" id="message-input" placeholder="Type a message...">
+            <button id="send-btn">Send</button>
+            <button id="disconnect-btn">Disconnect</button>
+        </div>
+    </div>
+
+    <script>
+        let clientId = null;
+        let pollInterval = null;
+
+        document.getElementById('connect-btn').addEventListener('click', connect);
+        document.getElementById('send-btn').addEventListener('click', sendMessage);
+        document.getElementById('disconnect-btn').addEventListener('click', disconnect);
+        document.getElementById('message-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        function connect() {
+            const username = document.getElementById('username').value.trim();
+            const serverIp = document.getElementById('server-ip').value.trim();
+            const serverPort = document.getElementById('server-port').value;
+
+            if (!username || !serverIp) {
+                alert('Please enter a username and server IP');
+                return;
+            }
+
+            fetch('/connect', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: username,
+                    server_ip: serverIp,
+                    server_port: serverPort
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    clientId = data.client_id;
+                    document.getElementById('login-container').style.display = 'none';
+                    document.getElementById('chat-container').style.display = 'block';
+                    
+                    // Start polling for messages
+                    pollInterval = setInterval(getMessages, 1000);
+                } else {
+                    alert('Failed to connect: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error connecting: ' + error);
+            });
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById('message-input');
+            const message = messageInput.value.trim();
+
+            if (!message) {
+                return;
+            }
+
+            fetch('/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    client_id: clientId,
+                    message: message
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    messageInput.value = '';
+                } else {
+                    alert('Failed to send message: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error sending message: ' + error);
+            });
+        }
+
+        function getMessages() {
+            fetch(`/messages?client_id=${clientId}`)
+            .then(response => response.json())
+            .then(data => {
+                const messages = data.messages;
+                const messageContainer = document.getElementById('message-container');
+
+                messages.forEach(message => {
+                    const messageElement = document.createElement('div');
+                    messageElement.className = message.startsWith('SERVER:') ? 'message server-message' : 'message';
+                    messageElement.textContent = message;
+                    messageContainer.appendChild(messageElement);
+                });
+
+                // Scroll to bottom
+                messageContainer.scrollTop = messageContainer.scrollHeight;
+            })
+            .catch(error => {
+                console.error('Error getting messages:', error);
+            });
+        }
+
+        function disconnect() {
+            if (clientId) {
+                clearInterval(pollInterval);
+
+                fetch('/disconnect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        client_id: clientId
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        clientId = null;
+                        document.getElementById('login-container').style.display = 'block';
+                        document.getElementById('chat-container').style.display = 'none';
+                        document.getElementById('message-container').innerHTML = '';
+                    } else {
+                        alert('Failed to disconnect: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('Error disconnecting: ' + error);
+                });
+            }
+        }
+    </script>
+</body>
+</html> 
